@@ -26,8 +26,12 @@ device = os.environ['DEVICE']
 
 def forward_pass(data, policy):
     image_data, qpos_data, action_data, is_pad = data
-    image_data, qpos_data, action_data, is_pad = image_data.to(device), qpos_data.to(device), action_data.to(device), is_pad.to(device)
-    return policy(qpos_data, image_data, action_data, is_pad) # TODO remove None
+    # Convert all tensors to float32 and move to device
+    image_data = image_data.to(device).float()
+    qpos_data = qpos_data.to(device).float()
+    action_data = action_data.to(device).float()
+    is_pad = is_pad.to(device).bool()  # is_pad should be boolean
+    return policy(qpos_data, image_data, action_data, is_pad)
 
 def plot_history(train_history, validation_history, num_epochs, ckpt_dir, seed):
     # save training curves

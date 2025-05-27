@@ -4,7 +4,7 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = "1"
 import torch
 
 # data directory
-DATA_DIR = 'data/'
+DATA_DIR = '/home/aidara/augmented_imitation_learning/training_data/'
 
 # checkpoint directory
 CHECKPOINT_DIR = 'checkpoints/'
@@ -25,12 +25,12 @@ ROBOT_PORTS = {
 # task config (you can add new tasks)
 TASK_CONFIG = {
     'dataset_dir': DATA_DIR,
-    'episode_len': 300,
-    'state_dim': 5,
-    'action_dim': 5,
-    'cam_width': 640,
-    'cam_height': 480,
-    'camera_names': ['front'],
+    'episode_len': 500,
+    'state_dim': 9,
+    'action_dim': 9,
+    'cam_width': 1280,
+    'cam_height': 720,
+    'camera_names': ['33137761', '36829049', '39725782'],
     'camera_port': 0
 }
 
@@ -57,8 +57,8 @@ POLICY_CONFIG = {
 TRAIN_CONFIG = {
     'seed': 42,
     'num_epochs': 2000,
-    'batch_size_val': 8,
-    'batch_size_train': 8,
+    'batch_size_val': 1,
+    'batch_size_train': 1,
     'eval_ckpt_name': 'policy_last.ckpt',
     'checkpoint_dir': CHECKPOINT_DIR
 }
