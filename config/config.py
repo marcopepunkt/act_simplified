@@ -12,6 +12,7 @@ CHECKPOINT_DIR = 'checkpoints/'
 # device
 device = 'cpu'
 if torch.cuda.is_available(): device = 'cuda'
+print(f"Using device: {device}")
 #if torch.backends.mps.is_available(): device = 'mps'
 os.environ['DEVICE'] = device
 
@@ -25,7 +26,7 @@ ROBOT_PORTS = {
 # task config (you can add new tasks)
 TASK_CONFIG = {
     'dataset_dir': DATA_DIR,
-    'episode_len': 500,
+    'episode_len': 350,
     'state_dim': 9,
     'action_dim': 9,
     'cam_width': 1280,
@@ -39,7 +40,7 @@ TASK_CONFIG = {
 POLICY_CONFIG = {
     'lr': 1e-5,
     'device': device,
-    'num_queries': 100,
+    'num_queries': 20,
     'kl_weight': 10,
     'hidden_dim': 512,
     'dim_feedforward': 3200,
@@ -48,7 +49,7 @@ POLICY_CONFIG = {
     'enc_layers': 4,
     'dec_layers': 7,
     'nheads': 8,
-    'camera_names': ['front'],
+    'camera_names': ['33137761', '36829049', '39725782'],
     'policy_class': 'ACT',
     'temporal_agg': False
 }
@@ -56,7 +57,7 @@ POLICY_CONFIG = {
 # training config
 TRAIN_CONFIG = {
     'seed': 42,
-    'num_epochs': 2000,
+    'num_epochs': 8000,
     'batch_size_val': 1,
     'batch_size_train': 1,
     'eval_ckpt_name': 'policy_last.ckpt',

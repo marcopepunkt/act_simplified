@@ -1,4 +1,6 @@
 from config.config import POLICY_CONFIG, TASK_CONFIG, TRAIN_CONFIG # must import first
+#import os
+#os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 import os
 import pickle
@@ -10,7 +12,7 @@ from training.utils import *
 
 # parse the task name via command line
 parser = argparse.ArgumentParser()
-parser.add_argument('--task', type=str, default='task1')
+parser.add_argument('--task', type=str, default='Cube_in_box2')
 args = parser.parse_args()
 task = args.task
 
@@ -123,6 +125,11 @@ if __name__ == '__main__':
    # number of training episodes
     data_dir = os.path.join(task_cfg['dataset_dir'], task)
     num_episodes = len(os.listdir(data_dir))
+    
+    print(f'\nTraining on task: {task}')
+    print(f'Number of episodes: {num_episodes}')
+    print(f'Checkpoint directory: {checkpoint_dir}')
+    print(f'Device: {device}')
 
     # load data
     train_dataloader, val_dataloader, stats, _ = load_data(data_dir, num_episodes, task_cfg['camera_names'],

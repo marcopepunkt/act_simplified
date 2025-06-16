@@ -192,7 +192,11 @@ def sample_insertion_pose():
 def get_image(images, camera_names, device='cpu'):
     curr_images = []
     for cam_name in camera_names:
-        curr_image = rearrange(images[cam_name], 'h w c -> c h w')
+        # Select only the first 3 channels (RGB) if the image has 4 channels (RGBA)
+        img_data = images[int(cam_name)]
+        if img_data.shape[-1] == 4:
+            img_data = img_data[..., :3]
+        curr_image = rearrange(img_data, 'h w c -> c h w')
         curr_images.append(curr_image)
     curr_image = np.stack(curr_images, axis=0)
     curr_image = torch.from_numpy(curr_image / 255.0).float().to(device).unsqueeze(0)

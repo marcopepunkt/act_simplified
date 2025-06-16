@@ -1,19 +1,31 @@
-from config.config import POLICY_CONFIG, TASK_CONFIG, TRAIN_CONFIG, ROBOT_PORTS # must import first
-
+from config.config import POLICY_CONFIG, TASK_CONFIG, TRAIN_CONFIG, ROBOT_PORTS  # must import first
+from datetime import datetime
 import os
 import cv2
 import torch
-import pickle
+import threading
+import signal
+import numpy as np
+import time
 import argparse
-from time import time
+import pickle
 
-from robot import Robot
+import pyzed.sl as sl
+
+from franka_py import Robot, Controller, move_to_joint_position, Gripper
+
 from training.utils import *
 
+# Global variables
+zed_dict = {}
+img_dict = {}
+timestamp_dict = {}
+thread_dict = {}
+cfg = {}
 
 # parse the task name via command line
 parser = argparse.ArgumentParser()
-parser.add_argument('--task', type=str, default='task1')
+parser.add_argument('--task', type=str, default='Cube_in_box2')
 args = parser.parse_args()
 task = args.task
 
@@ -24,32 +36,104 @@ train_cfg = TRAIN_CONFIG
 device = os.environ['DEVICE']
 
 
-def capture_image(cam):
-    # Capture a single frame
-    _, frame = cam.read()
-    # Generate a unique filename with the current date and time
-    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    # Define your crop coordinates (top left corner and bottom right corner)
-    x1, y1 = 400, 0  # Example starting coordinates (top left of the crop rectangle)
-    x2, y2 = 1600, 900  # Example ending coordinates (bottom right of the crop rectangle)
-    # Crop the image
-    image = image[y1:y2, x1:x2]
-    # Resize the image
-    image = cv2.resize(image, (cfg['cam_width'], cfg['cam_height']), interpolation=cv2.INTER_AREA)
+zed_dict = {}
+img_dict = {}
+timestamp_dict = {}
+thread_dict = {}
+stop_signal = False
 
-    return image
+
+def grab_run(id):
+    global stop_signal
+    global zed_dict
+    global timestamp_dict
+    global img_dict
+    #global depth_list
+
+    runtime = sl.RuntimeParameters()
+    while not stop_signal:
+        err = zed_dict[id].grab(runtime)
+        if err == sl.ERROR_CODE.SUCCESS:
+            zed_dict[id].retrieve_image(img_dict[id], sl.VIEW.LEFT)
+            #zed_list[index].retrieve_measure(depth_list[index], sl.MEASURE.DEPTH)
+            timestamp_dict[id] = zed_dict[id].get_timestamp(sl.TIME_REFERENCE.CURRENT).data_ns
+        time.sleep(0.001) #1ms
+    zed_dict[id].close()
+	
+
+def signal_handler(signal, frame):
+    global stop_signal
+    stop_signal=True
+    time.sleep(0.5)
+    exit()
+
+
+def init_zed_cameras(camera_names):
+    """
+    Initialize multiple ZED cameras
+    
+    Args:
+        camera_names: List of camera names/identifiers
+        
+    Returns:
+        Dictionary of initialized ZED camera objects
+    """
+    global stop_signal
+    global zed_dict
+    global img_dict
+    global timestamp_dict
+    global thread_dict
+    signal.signal(signal.SIGINT, signal_handler)
+
+    print("Running...")
+    init = sl.InitParameters()
+    init.camera_resolution = sl.RESOLUTION.HD720
+    init.camera_fps = 15  # The framerate is lowered to avoid any USB3 bandwidth issues
+
+    
+    cameras = sl.Camera.get_device_list()
+    available_serial_numbers = [cam.serial_number for cam in cameras]
+    assert set(available_serial_numbers) == set(int(cn) for cn in camera_names), f"Camera names do not match: {available_serial_numbers} != {camera_names}"
+    
+    #List and open cameras
+   
+    index = 0
+    for cam in available_serial_numbers:
+        init.set_from_serial_number(cam)
+        zed_dict[cam] = sl.Camera()
+        img_dict[cam] = sl.Mat()
+        #depth_list.append(sl.Mat())
+        timestamp_dict[cam] = 0
+        status = zed_dict[cam].open(init)
+        if status != sl.ERROR_CODE.SUCCESS:
+            print(repr(status))
+            zed_dict[cam].close()
+
+    #Start camera threads
+    for cam_id, cam in zed_dict.items():
+        if cam.is_opened():
+            thread_dict[cam_id] = threading.Thread(name=f"ZED Grabber {cam_id}", target=grab_run, args=(cam_id,))
+            thread_dict[cam_id].start()
+    
+    print("Started Thread grabber")
+
 
 if __name__ == "__main__":
-    # init camera
-    cam = cv2.VideoCapture(cfg['camera_port'])
-    # Check if the camera opened successfully
-    if not cam.isOpened():
-        raise IOError("Cannot open camera")
+    # Initialize all ZED cameras
+    init_zed_cameras(cfg['camera_names'])
+    print("Initialized ZED cameras")
+    if not zed_dict:
+        print("No ZED cameras available. Exiting...")
+        exit(1)
     # init follower
-    follower = Robot(device_name=ROBOT_PORTS['follower'])
+    follower = Robot("192.168.1.200")
+    gripper = Gripper("192.168.1.200")
+    gripper.homing()
+    print("Initialized Robot")
 
-    # load the policy
-    ckpt_path = os.path.join(train_cfg['checkpoint_dir'], train_cfg['eval_ckpt_name'])
+    project_dir = args.task
+    # load the policyf
+    ckpt_path = os.path.join(train_cfg['checkpoint_dir'], project_dir, train_cfg['eval_ckpt_name'])
     policy = make_policy(policy_config['policy_class'], policy_config)
     loading_status = policy.load_state_dict(torch.load(ckpt_path, map_location=torch.device(device)))
     print(loading_status)
@@ -57,11 +141,14 @@ if __name__ == "__main__":
     policy.eval()
 
     print(f'Loaded: {ckpt_path}')
-    stats_path = os.path.join(train_cfg['checkpoint_dir'], f'dataset_stats.pkl')
+    stats_path = os.path.join(train_cfg['checkpoint_dir'], project_dir, f'dataset_stats.pkl')
     with open(stats_path, 'rb') as f:
         stats = pickle.load(f)
 
     pre_process = lambda s_qpos: (s_qpos - stats['qpos_mean']) / stats['qpos_std']
+    
+    # This is a try. 
+    #post_process = lambda a: a * stats['qpos_mean'] + stats['qpos_mean']
     post_process = lambda a: a * stats['action_std'] + stats['action_mean']
 
     query_frequency = policy_config['num_queries']
@@ -70,17 +157,32 @@ if __name__ == "__main__":
         num_queries = policy_config['num_queries']
 
     # bring the follower to the leader
-    for i in range(90):
-        follower.read_position()
-        _ = capture_image(cam)
+    # Warm up all cameras
+    state = follower.read_once()
+    gripper_state = gripper.read_once()
+    gripper_threshhold = 0.035
     
+    kp = 0.5* np.array([100, 100, 100, 100, 100, 100, 50])
+    controller = Controller(follower, state.q,kp)
+    
+    #home_joint_positions = np.array([0, -np.pi/4, 0, -3 * np.pi/4, 0, np.pi/2, np.pi/4])
+    controller.start()
+    print("Controller started")
+    #home_joint_positions = np.array([ 0.6255863308906555, 0.7028061747550964, -0.6193988919258118, -2.184051275253296, 0.17927229404449463, 4.2207536697387695, -2.308631181716919])
+    #controller.update_target(home_joint_positions)
+    time.sleep(1) # wait for the robot to reach the home position
+    print("Robot reached home position")
+    joint_angles, joint_velocities = controller.get_current_state()
+    
+    
+    # Get initial observation from all cameras
     obs = {
-        'qpos': pwm2pos(follower.read_position()),
-        'qvel': vel2pwm(follower.read_velocity()),
-        'images': {cn: capture_image(cam) for cn in cfg['camera_names']}
+        'qpos': np.concatenate([joint_angles, [gripper_state.width, gripper_state.width]], axis=0),
+        'qvel': np.concatenate([joint_velocities, [0, 0]], axis=0),
+        'images': {int(cn): img_dict[int(cn)].get_data()[..., :3] for cn in cfg['camera_names']}
     }
-    os.system('say "start"')
-
+    
+    print("Starting :)")
     n_rollouts = 1
     for i in range(n_rollouts):
         ### evaluation loop
@@ -88,12 +190,26 @@ if __name__ == "__main__":
             all_time_actions = torch.zeros([cfg['episode_len'], cfg['episode_len']+num_queries, cfg['state_dim']]).to(device)
         qpos_history = torch.zeros((1, cfg['episode_len'], cfg['state_dim'])).to(device)
         with torch.inference_mode():
+            print("Evaluation loop")
              # init buffers
             obs_replay = []
             action_replay = []
+            
+            print("Controller started")
+            
             for t in range(cfg['episode_len']):
+                
+                # allow aborting the loop
+                k = cv2.waitKey(1)
+                if k == ord(' '):
+                    print("Aborting evaluation loop")
+                    break
+                
+                print(f"Step {t}")
                 qpos_numpy = np.array(obs['qpos'])
                 qpos = pre_process(qpos_numpy)
+                qpos = np.asarray(qpos)
+                qpos = np.ascontiguousarray(qpos).astype('float')
                 qpos = torch.from_numpy(qpos).float().to(device).unsqueeze(0)
                 qpos_history[:, t] = qpos
                 curr_image = get_image(obs['images'], cfg['camera_names'], device)
@@ -101,6 +217,7 @@ if __name__ == "__main__":
                 if t % query_frequency == 0:
                     all_actions = policy(qpos, curr_image)
                 if policy_config['temporal_agg']:
+                    print("Temporal aggregation enabled")
                     all_time_actions[[t], t:t+num_queries] = all_actions
                     actions_for_curr_step = all_time_actions[:, t]
                     actions_populated = torch.all(actions_for_curr_step != 0, axis=1)
@@ -116,22 +233,56 @@ if __name__ == "__main__":
                 ### post-process actions
                 raw_action = raw_action.squeeze(0).cpu().numpy()
                 action = post_process(raw_action)
-                action = pos2pwm(action).astype(int)
-                ### take action
-                follower.set_goal_pos(action)
+                
+                ### Check if the targets are within joint limits and clip them
+                low = np.array([-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]) 
+                high = np.array([2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973])
+                safety_offset = 1e-2
+                if np.any(np.isclose(action[:7], low, atol=safety_offset)) or np.any(np.isclose(action[:7], high, atol=safety_offset)):
+                    print("Warning: action is close to joint limit")
+                action[:7] = np.clip(action[:7], low + safety_offset, high - safety_offset)
 
+                #action = pos2pwm(action).astype(int)
+                ### take action
+                gripper_state = gripper.read_once()
+                print(f"Gripper state: {gripper_state.width}")
+                joint_angles, joint_velocities = controller.get_current_state()
+                
+                
+                controller.update_target(action[:7])
+                try:
+                    if action[7] < gripper_threshhold and gripper_state.width/2 > gripper_threshhold:
+                        print("Closing gripper")
+                        gripper.grasp(0.0,0.5,70,0.5,0.5)
+                        
+                    elif action[7] > gripper_threshhold and gripper_state.width/2 < gripper_threshhold:
+                        print("Opening gripper")
+                        gripper.move(0.08,1)
+                except Exception as e:
+                    print(e)
+                    print("Reconnecting to gripper")
+                    del gripper
+                    time.sleep(5)
+                    gripper = Gripper("192.168.1.200")
+                    gripper.move(0.08, 1)
+                    gripper_state = gripper.read_once()
+                
                 ### update obs
+                #time.sleep(1)
+                print("Updated obs")
+                # Update observation with all ZED camera images
                 obs = {
-                    'qpos': pwm2pos(follower.read_position()),
-                    'qvel': vel2pwm(follower.read_velocity()),
-                    'images': {cn: capture_image(cam) for cn in cfg['camera_names']}
+                    'qpos': np.concatenate([joint_angles, [gripper_state.width, gripper_state.width]], axis=0),
+                    'qvel': np.concatenate([joint_velocities, [0, 0]], axis=0),
+                    'images': {int(cn): img_dict[int(cn)].get_data()[..., :3].copy() for cn in cfg['camera_names']}
                 }
                 ### store data
                 obs_replay.append(obs)
                 action_replay.append(action)
+                print(action)
+                print(f"Step {t}/{cfg['episode_len']}")
 
-        os.system('say "stop"')
-
+        print("Episode finished")
         # create a dictionary to store the data
         data_dict = {
             '/observations/qpos': [],
@@ -149,18 +300,25 @@ if __name__ == "__main__":
             data_dict['/action'].append(a)
             # store the images
             for cam_name in cfg['camera_names']:
-                data_dict[f'/observations/images/{cam_name}'].append(o['images'][cam_name])
+                data_dict[f'/observations/images/{str(cam_name)}'].append(o['images'][int(cam_name)])
 
-        t0 = time()
+        #t0 = time()
         max_timesteps = len(data_dict['/observations/qpos'])
         # create data dir if it doesn't exist
-        data_dir = cfg['dataset_dir']  
-        if not os.path.exists(data_dir): os.makedirs(data_dir)
-        # count number of files in the directory
-        idx = len([name for name in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, name))])
-        dataset_path = os.path.join(data_dir, f'episode_{idx}')
+        # data_dir = os.path.join(cfg["checkpoints"], project_dir)  
+        # if not os.path.exists(data_dir): os.makedirs(data_dir)
+        # # count number of files in the directory
+        # idx = len([name for name in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, name))])
+        # dataset_path = os.path.join(data_dir, f'episode_{idx}')
         # save the data
-        with h5py.File("data/demo/trained.hdf5", 'w', rdcc_nbytes=1024 ** 2 * 2) as root:
+        filename = f"replay_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.hdf5"
+        savepath = os.path.join("data", project_dir, filename)
+        print(f"Attempting to save replay to: {savepath}")
+
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(savepath), exist_ok=True)
+
+        with h5py.File(savepath, 'w', rdcc_nbytes=1024 ** 2 * 2) as root:
             root.attrs['sim'] = True
             obs = root.create_group('observations')
             image = obs.create_group('images')
@@ -174,6 +332,8 @@ if __name__ == "__main__":
             
             for name, array in data_dict.items():
                 root[name][...] = array
+
+        print(f"Saved to {savepath}")
     
-    # disable torque
-    follower._disable_torque()
+    controller.stop()
+    print("Evaluation finished")
