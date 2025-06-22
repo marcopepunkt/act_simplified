@@ -25,7 +25,7 @@ cfg = {}
 
 # parse the task name via command line
 parser = argparse.ArgumentParser()
-parser.add_argument('--task', type=str, default='Cube_in_box2')
+parser.add_argument('--task', type=str, default='Cube_in_box')
 args = parser.parse_args()
 task = args.task
 
@@ -54,10 +54,16 @@ def grab_run(id):
     while not stop_signal:
         err = zed_dict[id].grab(runtime)
         if err == sl.ERROR_CODE.SUCCESS:
+            # Create a temporary Mat to hold the BGR image
+            #temp_img = sl.Mat()
             zed_dict[id].retrieve_image(img_dict[id], sl.VIEW.LEFT)
-            #zed_list[index].retrieve_measure(depth_list[index], sl.MEASURE.DEPTH)
+            # Convert BGR to RGB using OpenCV
+            # img_array = temp_img.get_data()
+            # img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+            # # Store the RGB image in img_dict
+            # img_dict[id].set_data(img_rgb)
             timestamp_dict[id] = zed_dict[id].get_timestamp(sl.TIME_REFERENCE.CURRENT).data_ns
-        time.sleep(0.001) #1ms
+        time.sleep(0.01) #1ms
     zed_dict[id].close()
 	
 
@@ -116,11 +122,13 @@ def init_zed_cameras(camera_names):
             thread_dict[cam_id].start()
     
     print("Started Thread grabber")
+    
+    return img_dict
 
 
 if __name__ == "__main__":
     # Initialize all ZED cameras
-    init_zed_cameras(cfg['camera_names'])
+    img_dict = init_zed_cameras(cfg['camera_names'])
     print("Initialized ZED cameras")
     if not zed_dict:
         print("No ZED cameras available. Exiting...")
@@ -128,7 +136,7 @@ if __name__ == "__main__":
     # init follower
     follower = Robot("192.168.1.200")
     gripper = Gripper("192.168.1.200")
-    gripper.homing()
+    #gripper.homing()
     print("Initialized Robot")
 
     project_dir = args.task
@@ -168,9 +176,9 @@ if __name__ == "__main__":
     #home_joint_positions = np.array([0, -np.pi/4, 0, -3 * np.pi/4, 0, np.pi/2, np.pi/4])
     controller.start()
     print("Controller started")
-    #home_joint_positions = np.array([ 0.6255863308906555, 0.7028061747550964, -0.6193988919258118, -2.184051275253296, 0.17927229404449463, 4.2207536697387695, -2.308631181716919])
-    #controller.update_target(home_joint_positions)
-    time.sleep(1) # wait for the robot to reach the home position
+    # home_position = np.array([-0.46617755,  0.29277581,  0.55141121, -2.38110638, -0.1030409,   3.955971, -2.46293664])
+    # controller.update_target(home_position)
+    # time.sleep(5) # wait for the robot to reach the home positcion
     print("Robot reached home position")
     joint_angles, joint_velocities = controller.get_current_state()
     
@@ -179,7 +187,7 @@ if __name__ == "__main__":
     obs = {
         'qpos': np.concatenate([joint_angles, [gripper_state.width, gripper_state.width]], axis=0),
         'qvel': np.concatenate([joint_velocities, [0, 0]], axis=0),
-        'images': {int(cn): img_dict[int(cn)].get_data()[..., :3] for cn in cfg['camera_names']}
+        'images': {int(cn): cv2.cvtColor(img_dict[int(cn)].get_data(), cv2.COLOR_BGR2RGB) for cn in cfg['camera_names']}
     }
     
     print("Starting :)")
@@ -216,6 +224,7 @@ if __name__ == "__main__":
 
                 if t % query_frequency == 0:
                     all_actions = policy(qpos, curr_image)
+                    print("_______________________Did inference")
                 if policy_config['temporal_agg']:
                     print("Temporal aggregation enabled")
                     all_time_actions[[t], t:t+num_queries] = all_actions
@@ -246,6 +255,7 @@ if __name__ == "__main__":
                 ### take action
                 gripper_state = gripper.read_once()
                 print(f"Gripper state: {gripper_state.width}")
+                
                 joint_angles, joint_velocities = controller.get_current_state()
                 
                 
@@ -257,6 +267,10 @@ if __name__ == "__main__":
                         
                     elif action[7] > gripper_threshhold and gripper_state.width/2 < gripper_threshhold:
                         print("Opening gripper")
+                        gripper.move(0.08,1)
+                        
+                    if gripper_state.width < 0.02:
+                        print("Gripper Missed")
                         gripper.move(0.08,1)
                 except Exception as e:
                     print(e)
@@ -272,15 +286,16 @@ if __name__ == "__main__":
                 print("Updated obs")
                 # Update observation with all ZED camera images
                 obs = {
-                    'qpos': np.concatenate([joint_angles, [gripper_state.width, gripper_state.width]], axis=0),
+                    'qpos': np.concatenate([joint_angles, [gripper_state.width/2 + 0.005, gripper_state.width/2 + 0.005]], axis=0), # Offset just temporary
                     'qvel': np.concatenate([joint_velocities, [0, 0]], axis=0),
-                    'images': {int(cn): img_dict[int(cn)].get_data()[..., :3].copy() for cn in cfg['camera_names']}
+                    'images': {int(cn): cv2.cvtColor(img_dict[int(cn)].get_data()[..., :3], cv2.COLOR_BGR2RGB) for cn in cfg['camera_names']}
                 }
                 ### store data
                 obs_replay.append(obs)
                 action_replay.append(action)
                 print(action)
                 print(f"Step {t}/{cfg['episode_len']}")
+                time.sleep(5/30)
 
         print("Episode finished")
         # create a dictionary to store the data

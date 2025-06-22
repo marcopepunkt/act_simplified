@@ -4,6 +4,7 @@ import torch
 import numpy as np
 from einops import rearrange
 from torch.utils.data import DataLoader
+import cv2
 
 from training.policy import ACTPolicy, CNNMLPPolicy
 
@@ -194,8 +195,12 @@ def get_image(images, camera_names, device='cpu'):
     for cam_name in camera_names:
         # Select only the first 3 channels (RGB) if the image has 4 channels (RGBA)
         img_data = images[int(cam_name)]
-        if img_data.shape[-1] == 4:
-            img_data = img_data[..., :3]
+        # if img_data.shape[-1] == 4:
+        #     img_data = img_data[..., :3]
+        # img_data = cv2.cvtColor(img_data, cv2.COLOR_BGR2RGB)
+        cv2.imshow(f'img_{cam_name}', img_data)
+        cv2.waitKey(1)
+        
         curr_image = rearrange(img_data, 'h w c -> c h w')
         curr_images.append(curr_image)
     curr_image = np.stack(curr_images, axis=0)

@@ -25,9 +25,9 @@ def load_hdf5(dataset_path):
 
 def main():
     # play cam video
-    data_file = '/home/aidara/augmented_imitation_learning/training_data/Cube_in_box2/episode_2.hdf5'
-    #data_file = 'data/demo/trained.hdf5'
-    qpos = load_hdf5(dataset_path=data_file)
+    # data_file = '/home/aidara/augmented_imitation_learning/training_data/Cube_in_box2/episode_2.hdf5'
+    # #data_file = 'data/demo/trained.hdf5'
+    # qpos = load_hdf5(dataset_path=data_file)
 
 
     robot = Robot("192.168.1.200")
@@ -46,7 +46,9 @@ def main():
    
     state = robot.read_once()
     home = np.array([0, -np.pi/4, 0, -3 * np.pi/4, 0, np.pi/2, np.pi/4])
-    move_to_joint_position(robot, home.tolist(),0.5 )
+    home_position = np.array([-0.55000514,  0.2686058,   0.55237794, -2.53292203, -0.1959981,   4.04444742, -2.47705913])
+
+    move_to_joint_position(robot, home_position.tolist(),0.5 )
     
     # time.sleep(0.5)
     # move_to_joint_position(robot, qpos[0][:7].tolist(),0.5 )
@@ -57,60 +59,60 @@ def main():
     # print("moved to home")
     # time.sleep(0.5)
     # print("moveds")
-    kp = 0.5 * np.array([100, 100, 100, 100, 100, 100, 50])
-    pd_controller = Controller(robot, state.q,kp)
-    pd_controller.start()
+    # kp = 0.5 * np.array([100, 100, 100, 100, 100, 100, 50])
+    # pd_controller = Controller(robot, state.q,kp)
+    # pd_controller.start()
     
-    pd_controller.update_target(qpos[0][:7].tolist())
+    # pd_controller.update_target(qpos[0][:7].tolist())
     
-    #pd_controller.update_target( np.array([0.4937153, 0.78781367, -0.4497713, -2.9718, -0.70264357, 3.6525, -1.26562544]))
-    time.sleep(10)
-    # for i,q in enumerate(qpos):
-    #     if i %30 != 0:
-    #         print("skipping")
-    #         continue
-    #     # Update robot arm position
-    #     joint_state = q[:7]
-    #     joint_state = np.array(joint_state)
-    #     print(f"acquired {joint_state}")
-    #     pd_controller.update_target(joint_state)
+    # #pd_controller.update_target( np.array([0.4937153, 0.78781367, -0.4497713, -2.9718, -0.70264357, 3.6525, -1.26562544]))
+    # time.sleep(10)
+    # # for i,q in enumerate(qpos):
+    # #     if i %30 != 0:
+    # #         print("skipping")
+    # #         continue
+    # #     # Update robot arm position
+    # #     joint_state = q[:7]
+    # #     joint_state = np.array(joint_state)
+    # #     print(f"acquired {joint_state}")
+    # #     pd_controller.update_target(joint_state)
         
-    #     # Update gripper position based on threshold
-    #     gripper_width = q[7]
+    # #     # Update gripper position based on threshold
+    # #     gripper_width = q[7]
         
-    #     # Track consecutive frames above/below threshold
-    #     if not hasattr(main, 'threshold_counter_open'):
-    #         main.threshold_counter_open = 0
-    #         main.threshold_counter_close = 0
-    #         main.last_gripper_state = "open"
+    # #     # Track consecutive frames above/below threshold
+    # #     if not hasattr(main, 'threshold_counter_open'):
+    # #         main.threshold_counter_open = 0
+    # #         main.threshold_counter_close = 0
+    # #         main.last_gripper_state = "open"
         
-    #     if gripper_width > gripper_threshold:
-    #         main.threshold_counter_open += 1   
-    #         main.threshold_counter_close = 0
-    #     else:
-    #         main.threshold_counter_close += 1
-    #         main.threshold_counter_open = 0
+    # #     if gripper_width > gripper_threshold:
+    # #         main.threshold_counter_open += 1   
+    # #         main.threshold_counter_close = 0
+    # #     else:
+    # #         main.threshold_counter_close += 1
+    # #         main.threshold_counter_open = 0
             
-    #     # Change gripper state after 3 consecutive frames in either direction
-    #     if main.threshold_counter_open >= frame_counter and main.last_gripper_state != "open":
-    #         gripper.move(0.08,1)
-    #         main.last_gripper_state = "open"
-    #         print("Opening gripper")
-    #     elif main.threshold_counter_close >= frame_counter and main.last_gripper_state != "closed":
-    #         gripper.grasp(0.0,0.5,70,0.5,0.5)
-    #         main.last_gripper_state = "closed"
-    #         print("Closing gripper")
+    # #     # Change gripper state after 3 consecutive frames in either direction
+    # #     if main.threshold_counter_open >= frame_counter and main.last_gripper_state != "open":
+    # #         gripper.move(0.08,1)
+    # #         main.last_gripper_state = "open"
+    # #         print("Opening gripper")
+    # #     elif main.threshold_counter_close >= frame_counter and main.last_gripper_state != "closed":
+    # #         gripper.grasp(0.0,0.5,70,0.5,0.5)
+    # #         main.last_gripper_state = "closed"
+    # #         print("Closing gripper")
             
-    #     # if main.last_gripper_state == "closed":
-    #     #     gripper.grasp(0.02,1,70,0.01,0.01)
+    # #     # if main.last_gripper_state == "closed":
+    # #     #     gripper.grasp(0.02,1,70,0.01,0.01)
             
-    #     #gripper_success = gripper.move(gripper_width*2, gripper_speed)
+    # #     #gripper_success = gripper.move(gripper_width*2, gripper_speed)
         
-    #     time.sleep(1)   #move_to_joint_position(robot,q.tolist(), 0.5)
-    #     print("updated target")
-    #     print(f"STEP {i} successfully executed")
-    print("Done")
-    pd_controller.stop()
+    # #     time.sleep(1)   #move_to_joint_position(robot,q.tolist(), 0.5)
+    # #     print("updated target")
+    # #     print(f"STEP {i} successfully executed")
+    # print("Done")
+    # pd_controller.stop()
 
 if __name__ == "__main__":
     # Run the main function in an asyncio event loop

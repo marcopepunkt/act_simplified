@@ -24,5 +24,5 @@ def inspect_hdf5(dataset_path):
         root.visititems(print_attrs)
 
 if __name__ == "__main__":
-    data_file = '/home/aidara/augmented_imitation_learning/training_data/randomstuff/threecolor_movement_1.hdf5'
+    data_file = '/home/aidara/augmented_imitation_learning/act_simplified/data/Cube_in_box/replay_2025-06-10_10-24-54.hdf5'
     inspect_hdf5(dataset_path=data_file)
