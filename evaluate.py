@@ -168,7 +168,7 @@ if __name__ == "__main__":
     # Warm up all cameras
     state = follower.read_once()
     gripper_state = gripper.read_once()
-    gripper_threshhold = 0.035
+    gripper_threshhold = 0.037
     
     kp = 0.5* np.array([100, 100, 100, 100, 100, 100, 50])
     controller = Controller(follower, state.q,kp)
@@ -295,7 +295,7 @@ if __name__ == "__main__":
                 action_replay.append(action)
                 print(action)
                 print(f"Step {t}/{cfg['episode_len']}")
-                time.sleep(5/30)
+                #time.sleep(5/30)
 
         print("Episode finished")
         # create a dictionary to store the data
@@ -350,5 +350,5 @@ if __name__ == "__main__":
 
         print(f"Saved to {savepath}")
     
-    controller.stop()
+    #controller.stop()
     print("Evaluation finished")
