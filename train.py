@@ -12,7 +12,7 @@ from training.utils import *
 
 # parse the task name via command line
 parser = argparse.ArgumentParser()
-parser.add_argument('--task', type=str, default='Cube_in_box')
+parser.add_argument('--task', type=str, default='Model2')
 args = parser.parse_args()
 task = args.task
 

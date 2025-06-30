@@ -26,12 +26,12 @@ ROBOT_PORTS = {
 # task config (you can add new tasks)
 TASK_CONFIG = {
     'dataset_dir': DATA_DIR,
-    'episode_len': 350,
+    'episode_len': 300,
     'state_dim': 9,
     'action_dim': 9,
     'cam_width': 1280,
     'cam_height': 720,
-    'camera_names': ['33137761', '36829049', '39725782'],
+    'camera_names': ['34783283', '32689769', '39725782'],
     'camera_port': 0
 }
 
@@ -60,6 +60,6 @@ TRAIN_CONFIG = {
     'num_epochs': 8000,
     'batch_size_val': 3,
     'batch_size_train': 3,
-    'eval_ckpt_name': 'policy_epoch_4600_seed_42.ckpt',
+    'eval_ckpt_name': 'policy_epoch_5400_seed_42.ckpt',
     'checkpoint_dir': CHECKPOINT_DIR
 }

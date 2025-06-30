@@ -25,7 +25,7 @@ cfg = {}
 
 # parse the task name via command line
 parser = argparse.ArgumentParser()
-parser.add_argument('--task', type=str, default='Cube_in_box')
+parser.add_argument('--task', type=str, default='Model2')
 args = parser.parse_args()
 task = args.task
 
@@ -127,6 +127,9 @@ def init_zed_cameras(camera_names):
 
 
 if __name__ == "__main__":
+    
+    continuing = True
+    
     # Initialize all ZED cameras
     img_dict = init_zed_cameras(cfg['camera_names'])
     print("Initialized ZED cameras")
@@ -136,7 +139,8 @@ if __name__ == "__main__":
     # init follower
     follower = Robot("192.168.1.200")
     gripper = Gripper("192.168.1.200")
-    #gripper.homing()
+    if not continuing:
+        gripper.homing()
     print("Initialized Robot")
 
     project_dir = args.task
@@ -168,18 +172,19 @@ if __name__ == "__main__":
     # Warm up all cameras
     state = follower.read_once()
     gripper_state = gripper.read_once()
-    gripper_threshhold = 0.037
+    gripper_threshhold = 0.030
     
-    kp = 0.5* np.array([100, 100, 100, 100, 100, 100, 50])
+    kp = 2* np.array([100, 100, 100, 100, 100, 100, 50])
     controller = Controller(follower, state.q,kp)
     
     #home_joint_positions = np.array([0, -np.pi/4, 0, -3 * np.pi/4, 0, np.pi/2, np.pi/4])
     controller.start()
     print("Controller started")
-    # home_position = np.array([-0.46617755,  0.29277581,  0.55141121, -2.38110638, -0.1030409,   3.955971, -2.46293664])
-    # controller.update_target(home_position)
-    # time.sleep(5) # wait for the robot to reach the home positcion
-    print("Robot reached home position")
+    if not continuing:
+        home_position = np.array([-0.49351007, -0.22775047, 0.38494858, -2.68436909, -0.3738021, 3.82696247, -2.15310597])    #np.array([-0.46617755,  0.29277581,  0.55141121, -2.38110638, -0.1030409,   3.955971, -2.46293664])
+        controller.update_target(home_position)
+        time.sleep(5) # wait for the robot to reach the home positcion
+        print("Robot reached home position")
     joint_angles, joint_velocities = controller.get_current_state()
     
     
@@ -226,7 +231,7 @@ if __name__ == "__main__":
                     all_actions = policy(qpos, curr_image)
                     print("_______________________Did inference")
                 if policy_config['temporal_agg']:
-                    print("Temporal aggregation enabled")
+                    #print("Temporal aggregation enabled")
                     all_time_actions[[t], t:t+num_queries] = all_actions
                     actions_for_curr_step = all_time_actions[:, t]
                     actions_populated = torch.all(actions_for_curr_step != 0, axis=1)
@@ -283,10 +288,10 @@ if __name__ == "__main__":
                 
                 ### update obs
                 #time.sleep(1)
-                print("Updated obs")
+                #print("Updated obs")
                 # Update observation with all ZED camera images
                 obs = {
-                    'qpos': np.concatenate([joint_angles, [gripper_state.width/2 + 0.005, gripper_state.width/2 + 0.005]], axis=0), # Offset just temporary
+                    'qpos': np.concatenate([joint_angles, [gripper_state.width/2, gripper_state.width/2]], axis=0), # Offset just temporary
                     'qvel': np.concatenate([joint_velocities, [0, 0]], axis=0),
                     'images': {int(cn): cv2.cvtColor(img_dict[int(cn)].get_data()[..., :3], cv2.COLOR_BGR2RGB) for cn in cfg['camera_names']}
                 }
